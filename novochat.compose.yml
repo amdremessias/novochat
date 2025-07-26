@@ -1,0 +1,134 @@
+version: '3'
+
+services:
+  base: &base
+    image: chatwoot/chatwoot:v4.4.0-ce
+    env_file: .env ## Change this file for customized env variables
+    volumes:
+      - storage_data:/app/storage
+
+  rails:
+    <<: *base
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - '192.168.2.47:3000:3000'
+    environment:
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    entrypoint: docker/entrypoints/rails.sh
+    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    restart: always
+
+  sidekiq:
+    <<: *base
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    restart: always
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: always
+    ports:
+      - '192.168.2.47:5454:5454'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=chatwoot
+      - POSTGRES_USER=postgres
+      # Please provide your own password.
+      - POSTGRES_PASSWORD=BQef4IaVnba1M0IPXWqja
+
+  redis:
+    image: redis:alpine
+    restart: always
+    command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
+    env_file: .env
+    volumes:
+      - redis_data:/data
+    ports:
+      - '192.168.2.47:6363:6363'
+
+volumes:
+  storage_data:
+  postgres_data:
+  redis_data:
+root@mr-roboot:/opt/novochat/chatwoot# ^C
+root@mr-roboot:/opt/novochat/chatwoot# ^C
+root@mr-roboot:/opt/novochat/chatwoot# ^C
+root@mr-roboot:/opt/novochat/chatwoot# cat docker-compose..yml
+cat: docker-compose..yml: No such file or directory
+root@mr-roboot:/opt/novochat/chatwoot# ^C
+root@mr-roboot:/opt/novochat/chatwoot# ^C
+root@mr-roboot:/opt/novochat/chatwoot# cat docker-compose.yml
+version: '3'
+
+services:
+  base: &base
+    image: chatwoot/chatwoot:v4.4.0-ce
+    env_file: .env ## Change this file for customized env variables
+    volumes:
+      - storage_data:/app/storage
+
+  rails:
+    <<: *base
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - '192.168.2.47:3000:3000'
+    environment:
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    entrypoint: docker/entrypoints/rails.sh
+    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    restart: always
+
+  sidekiq:
+    <<: *base
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    restart: always
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: always
+    ports:
+      - '192.168.2.47:5454:5454'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=chatwoot
+      - POSTGRES_USER=postgres
+      # Please provide your own password.
+      - POSTGRES_PASSWORD=BQef4IaVnba1M0IPXWqja
+
+  redis:
+    image: redis:alpine
+    restart: always
+    command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
+    env_file: .env
+    volumes:
+      - redis_data:/data
+    ports:
+      - '192.168.2.47:6363:6363'
+
+volumes:
+  storage_data:
+  postgres_data:
+  redis_data:
