@@ -1,63 +1,793 @@
 version: '3'
 
 services:
+  # Base é um template para os serviços que usam a mesma imagem e volumes.
   base: &base
-    image: chatwoot/chatwoot:v4.4.0-ce
-    env_file: .env ## Change this file for customized env variables
-    volumes:
-      - storage_data:/app/storage
-
-  rails:
-    <<: *base
-    depends_on:
-      - postgres
-      - redis
-    ports:
-      - '192.168.2.47:3000:3000'
-    environment:
-      - NODE_ENV=production
-      - RAILS_ENV=production
-      - INSTALLATION_ENV=docker
-    entrypoint: docker/entrypoints/rails.sh
-    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
-    restart: always
-
-  sidekiq:
-    <<: *base
-    depends_on:
-      - postgres
-      - redis
-    environment:
-      - NODE_ENV=production
-      - RAILS_ENV=production
-      - INSTALLATION_ENV=docker
-    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
-    restart: always
-
-  postgres:
-    image: pgvector/pgvector:pg16
-    restart: always
-    ports:
-      - '192.168.2.47:5454:5454'
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=chatwoot
-      - POSTGRES_USER=postgres
-      # Please provide your own password.
-      - POSTGRES_PASSWORD=BQef4IaVnba1M0IPXWqja
-
-  redis:
-    image: redis:alpine
-    restart: always
-    command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
+    image: chatwoot/chatwoot:v4.3.0-ce
+    # O arquivo .env é usado para carregar variáveis de ambiente para os serviços.
     env_file: .env
     volumes:
+      # Mapeia um volume persistente para o armazenamento de dados da aplicação.
+      - storage_data:/app/storage
+
+  # Serviço principal do Chatwoot (servidor Rails).
+  rails:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Define as dependências. Este serviço só iniciará após o postgres e o redis estarem prontos.
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      # Mapeia a porta 3000 do container para a porta 3000 no IP 192.168.2.37 da sua máquina host.
+      # Isso significa que o Chatwoot será acessível via http://host.novochat.internal:3000.
+      - '192.168.5.40:3000:3000'
+    environment:
+      # Define variáveis de ambiente específicas para o container Rails.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Define o script de entrada para o container.
+    entrypoint: docker/entrypoints/rails.sh
+    # Define o comando a ser executado dentro do container.
+    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    # Garante que o serviço será reiniciado automaticamente em caso de falha.
+    restart: always
+
+  # Serviço Sidekiq para processamento de jobs em segundo plano.
+  sidekiq:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Depende do postgres e do redis para funcionar.
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      # Define variáveis de ambiente para o Sidekiq.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Comando para iniciar o Sidekiq.
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+
+  # Serviço de banco de dados PostgreSQL.
+  postgres:
+    # Imagem Docker do PostgreSQL com suporte a pgvector.
+    image: pgvector/pgvector:pg16
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    ports:
+      # Mapeia a porta 5454 do container Postgres para a porta 5454 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que você acesse o banco de dados diretamente de fora do Docker (opcional).
+      - '192.168.5.40:5432:5432'
+    volumes:
+      # Mapeia um volume persistente para os dados do PostgreSQL.
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      # Define variáveis de ambiente para a configuração do PostgreSQL.
+      # Estas variáveis são usadas se DATABASE_URL não estiver definida no .env
+      - POSTGRES_DB=chatwoot
+      - POSTGRES_USER=postgres
+      # IMPORTANTE: A senha aqui DEVE corresponder à senha definida em POSTGRES_PASSWORD no seu arquivo .env.
+      - POSTGRES_PASSWORD=BQef4IaVnba1M0IPWqja
+
+  # Serviço de cache e fila de mensagens Redis.
+  redis:
+    # Imagem Docker leve do Redis.
+    image: redis:alpine
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    # Comando para iniciar o Redis. O --requirepass "$REDIS_PASSWORD" faz com que o Redis exija a senha.
+    # Esta senha é lida da variável REDIS_PASSWORD no arquivo .env.
+    command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
+    # Carrega as variáveis de ambiente do arquivo .env.
+    env_file: .env
+    volumes:
+      # Mapeia um volume persistente para os dados do Redis.
       - redis_data:/data
     ports:
-      - '192.168.2.47:6363:6363'
+      # Mapeia a porta 6363 do container Redis para a porta 6363 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que serviços externos (ou você mesmo) acessem este Redis.
+      # No entanto, o serviço 'rails' interno usará 'redis:6379' conforme configurado no .env.
+      - '192.168.5.40:6379:6379'
 
+# Definição dos volumes persistentes para garantir que os dados não sejam perdidos ao recriar os containers.
 volumes:
-  storage_data:
-  postgres_data:
-  redis_data:
+  storage_data: # Volume para uploads de arquivos do Chatwoot.
+  postgres_data: # Volume para os dados do PostgreSQL.
+  redis_data: # Volume para os dados do Redisversion: '3'
+
+services:
+  # Base é um template para os serviços que usam a mesma imagem e volumes.
+  base: &base
+    image: chatwoot/chatwoot:v4.3.0-ce
+    # O arquivo .env é usado para carregar variáveis de ambiente para os serviços.
+    env_file: .env
+    volumes:
+      # Mapeia um volume persistente para o armazenamento de dados da aplicação.
+      - storage_data:/app/storage
+
+  # Serviço principal do Chatwoot (servidor Rails).
+  rails:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Define as dependências. Este serviço só iniciará após o postgres e o redis estarem prontos.
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      # Mapeia a porta 3000 do container para a porta 3000 no IP 192.168.2.37 da sua máquina host.
+      # Isso significa que o Chatwoot será acessível via http://host.novochat.internal:3000.
+      - '192.168.5.40:3000:3000'
+    environment:
+      # Define variáveis de ambiente específicas para o container Rails.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Define o script de entrada para o container.
+    entrypoint: docker/entrypoints/rails.sh
+    # Define o comando a ser executado dentro do container.
+    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    # Garante que o serviço será reiniciado automaticamente em caso de falha.
+    restart: always
+
+  # Serviço Sidekiq para processamento de jobs em segundo plano.
+  sidekiq:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Depende do postgres e do redis para funcionar.
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      # Define variáveis de ambiente para o Sidekiq.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Comando para iniciar o Sidekiq.
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+
+  # Serviço de banco de dados PostgreSQL.
+  postgres:
+    # Imagem Docker do PostgreSQL com suporte a pgvector.
+    image: pgvector/pgvector:pg16
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    ports:
+      # Mapeia a porta 5454 do container Postgres para a porta 5454 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que você acesse o banco de dados diretamente de fora do Docker (opcional).
+      - '192.168.5.40:5432:5432'
+    volumes:
+      # Mapeia um volume persistente para os dados do PostgreSQL.
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      # Define variáveis de ambiente para a configuração do PostgreSQL.
+      # Estas variáveis são usadas se DATABASE_URL não estiver definida no .env
+      - POSTGRES_DB=chatwoot
+      - POSTGRES_USER=postgres
+      # IMPORTANTE: A senha aqui DEVE corresponder à senha definida em POSTGRES_PASSWORD no seu arquivo .env.
+      - POSTGRES_PASSWORD=BQef4IaVnba1M0IPWqja
+
+  # Serviço de cache e fila de mensagens Redis.
+  redis:
+    # Imagem Docker leve do Redis.
+    image: redis:alpine
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    # Comando para iniciar o Redis. O --requirepass "$REDIS_PASSWORD" faz com que o Redis exija a senha.
+    # Esta senha é lida da variável REDIS_PASSWORD no arquivo .env.
+    command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
+    # Carrega as variáveis de ambiente do arquivo .env.
+    env_file: .env
+    volumes:
+      # Mapeia um volume persistente para os dados do Redis.
+      - redis_data:/data
+    ports:
+      # Mapeia a porta 6363 do container Redis para a porta 6363 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que serviços externos (ou você mesmo) acessem este Redis.
+      # No entanto, o serviço 'rails' interno usará 'redis:6379' conforme configurado no .env.
+      - '192.168.5.40:6379:6379'
+
+# Definição dos volumes persistentes para garantir que os dados não sejam perdidos ao recriar os containers.
+volumes:
+  storage_data: # Volume para uploads de arquivos do Chatwoot.
+  postgres_data: # Volume para os dados do PostgreSQL.
+  redis_data: # Volume para os dados do Redisversion: '3'
+
+services:
+  # Base é um template para os serviços que usam a mesma imagem e volumes.
+  base: &base
+    image: chatwoot/chatwoot:v4.3.0-ce
+    # O arquivo .env é usado para carregar variáveis de ambiente para os serviços.
+    env_file: .env
+    volumes:
+      # Mapeia um volume persistente para o armazenamento de dados da aplicação.
+      - storage_data:/app/storage
+
+  # Serviço principal do Chatwoot (servidor Rails).
+  rails:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Define as dependências. Este serviço só iniciará após o postgres e o redis estarem prontos.
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      # Mapeia a porta 3000 do container para a porta 3000 no IP 192.168.2.37 da sua máquina host.
+      # Isso significa que o Chatwoot será acessível via http://host.novochat.internal:3000.
+      - '192.168.5.40:3000:3000'
+    environment:
+      # Define variáveis de ambiente específicas para o container Rails.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Define o script de entrada para o container.
+    entrypoint: docker/entrypoints/rails.sh
+    # Define o comando a ser executado dentro do container.
+    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    # Garante que o serviço será reiniciado automaticamente em caso de falha.
+    restart: always
+
+  # Serviço Sidekiq para processamento de jobs em segundo plano.
+  sidekiq:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Depende do postgres e do redis para funcionar.
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      # Define variáveis de ambiente para o Sidekiq.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Comando para iniciar o Sidekiq.
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+
+  # Serviço de banco de dados PostgreSQL.
+  postgres:
+    # Imagem Docker do PostgreSQL com suporte a pgvector.
+    image: pgvector/pgvector:pg16
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    ports:
+      # Mapeia a porta 5454 do container Postgres para a porta 5454 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que você acesse o banco de dados diretamente de fora do Docker (opcional).
+      - '192.168.5.40:5432:5432'
+    volumes:
+      # Mapeia um volume persistente para os dados do PostgreSQL.
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      # Define variáveis de ambiente para a configuração do PostgreSQL.
+      # Estas variáveis são usadas se DATABASE_URL não estiver definida no .env
+      - POSTGRES_DB=chatwoot
+      - POSTGRES_USER=postgres
+      # IMPORTANTE: A senha aqui DEVE corresponder à senha definida em POSTGRES_PASSWORD no seu arquivo .env.
+      - POSTGRES_PASSWORD=BQef4IaVnba1M0IPWqja
+
+  # Serviço de cache e fila de mensagens Redis.
+  redis:
+    # Imagem Docker leve do Redis.
+    image: redis:alpine
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    # Comando para iniciar o Redis. O --requirepass "$REDIS_PASSWORD" faz com que o Redis exija a senha.
+    # Esta senha é lida da variável REDIS_PASSWORD no arquivo .env.
+    command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
+    # Carrega as variáveis de ambiente do arquivo .env.
+    env_file: .env
+    volumes:
+      # Mapeia um volume persistente para os dados do Redis.
+      - redis_data:/data
+    ports:
+      # Mapeia a porta 6363 do container Redis para a porta 6363 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que serviços externos (ou você mesmo) acessem este Redis.
+      # No entanto, o serviço 'rails' interno usará 'redis:6379' conforme configurado no .env.
+      - '192.168.5.40:6379:6379'
+
+# Definição dos volumes persistentes para garantir que os dados não sejam perdidos ao recriar os containers.
+volumes:
+  storage_data: # Volume para uploads de arquivos do Chatwoot.
+  postgres_data: # Volume para os dados do PostgreSQL.
+  redis_data: # Volume para os dados do Redisversion: '3'
+
+services:
+  # Base é um template para os serviços que usam a mesma imagem e volumes.
+  base: &base
+    image: chatwoot/chatwoot:v4.3.0-ce
+    # O arquivo .env é usado para carregar variáveis de ambiente para os serviços.
+    env_file: .env
+    volumes:
+      # Mapeia um volume persistente para o armazenamento de dados da aplicação.
+      - storage_data:/app/storage
+
+  # Serviço principal do Chatwoot (servidor Rails).
+  rails:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Define as dependências. Este serviço só iniciará após o postgres e o redis estarem prontos.
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      # Mapeia a porta 3000 do container para a porta 3000 no IP 192.168.2.37 da sua máquina host.
+      # Isso significa que o Chatwoot será acessível via http://host.novochat.internal:3000.
+      - '192.168.5.40:3000:3000'
+    environment:
+      # Define variáveis de ambiente específicas para o container Rails.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Define o script de entrada para o container.
+    entrypoint: docker/entrypoints/rails.sh
+    # Define o comando a ser executado dentro do container.
+    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    # Garante que o serviço será reiniciado automaticamente em caso de falha.
+    restart: always
+
+  # Serviço Sidekiq para processamento de jobs em segundo plano.
+  sidekiq:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Depende do postgres e do redis para funcionar.
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      # Define variáveis de ambiente para o Sidekiq.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Comando para iniciar o Sidekiq.
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+
+  # Serviço de banco de dados PostgreSQL.
+  postgres:
+    # Imagem Docker do PostgreSQL com suporte a pgvector.
+    image: pgvector/pgvector:pg16
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    ports:
+      # Mapeia a porta 5454 do container Postgres para a porta 5454 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que você acesse o banco de dados diretamente de fora do Docker (opcional).
+      - '192.168.5.40:5432:5432'
+    volumes:
+      # Mapeia um volume persistente para os dados do PostgreSQL.
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      # Define variáveis de ambiente para a configuração do PostgreSQL.
+      # Estas variáveis são usadas se DATABASE_URL não estiver definida no .env
+      - POSTGRES_DB=chatwoot
+      - POSTGRES_USER=postgres
+      # IMPORTANTE: A senha aqui DEVE corresponder à senha definida em POSTGRES_PASSWORD no seu arquivo .env.
+      - POSTGRES_PASSWORD=BQef4IaVnba1M0IPWqja
+
+  # Serviço de cache e fila de mensagens Redis.
+  redis:
+    # Imagem Docker leve do Redis.
+    image: redis:alpine
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    # Comando para iniciar o Redis. O --requirepass "$REDIS_PASSWORD" faz com que o Redis exija a senha.
+    # Esta senha é lida da variável REDIS_PASSWORD no arquivo .env.
+    command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
+    # Carrega as variáveis de ambiente do arquivo .env.
+    env_file: .env
+    volumes:
+      # Mapeia um volume persistente para os dados do Redis.
+      - redis_data:/data
+    ports:
+      # Mapeia a porta 6363 do container Redis para a porta 6363 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que serviços externos (ou você mesmo) acessem este Redis.
+      # No entanto, o serviço 'rails' interno usará 'redis:6379' conforme configurado no .env.
+      - '192.168.5.40:6379:6379'
+
+# Definição dos volumes persistentes para garantir que os dados não sejam perdidos ao recriar os containers.
+volumes:
+  storage_data: # Volume para uploads de arquivos do Chatwoot.
+  postgres_data: # Volume para os dados do PostgreSQL.
+  redis_data: # Volume para os dados do Redisversion: '3'
+
+services:
+  # Base é um template para os serviços que usam a mesma imagem e volumes.
+  base: &base
+    image: chatwoot/chatwoot:v4.3.0-ce
+    # O arquivo .env é usado para carregar variáveis de ambiente para os serviços.
+    env_file: .env
+    volumes:
+      # Mapeia um volume persistente para o armazenamento de dados da aplicação.
+      - storage_data:/app/storage
+
+  # Serviço principal do Chatwoot (servidor Rails).
+  rails:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Define as dependências. Este serviço só iniciará após o postgres e o redis estarem prontos.
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      # Mapeia a porta 3000 do container para a porta 3000 no IP 192.168.2.37 da sua máquina host.
+      # Isso significa que o Chatwoot será acessível via http://host.novochat.internal:3000.
+      - '192.168.5.40:3000:3000'
+    environment:
+      # Define variáveis de ambiente específicas para o container Rails.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Define o script de entrada para o container.
+    entrypoint: docker/entrypoints/rails.sh
+    # Define o comando a ser executado dentro do container.
+    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    # Garante que o serviço será reiniciado automaticamente em caso de falha.
+    restart: always
+
+  # Serviço Sidekiq para processamento de jobs em segundo plano.
+  sidekiq:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Depende do postgres e do redis para funcionar.
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      # Define variáveis de ambiente para o Sidekiq.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Comando para iniciar o Sidekiq.
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+
+  # Serviço de banco de dados PostgreSQL.
+  postgres:
+    # Imagem Docker do PostgreSQL com suporte a pgvector.
+    image: pgvector/pgvector:pg16
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    ports:
+      # Mapeia a porta 5454 do container Postgres para a porta 5454 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que você acesse o banco de dados diretamente de fora do Docker (opcional).
+      - '192.168.5.40:5432:5432'
+    volumes:
+      # Mapeia um volume persistente para os dados do PostgreSQL.
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      # Define variáveis de ambiente para a configuração do PostgreSQL.
+      # Estas variáveis são usadas se DATABASE_URL não estiver definida no .env
+      - POSTGRES_DB=chatwoot
+      - POSTGRES_USER=postgres
+      # IMPORTANTE: A senha aqui DEVE corresponder à senha definida em POSTGRES_PASSWORD no seu arquivo .env.
+      - POSTGRES_PASSWORD=BQef4IaVnba1M0IPWqja
+
+  # Serviço de cache e fila de mensagens Redis.
+  redis:
+    # Imagem Docker leve do Redis.
+    image: redis:alpine
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    # Comando para iniciar o Redis. O --requirepass "$REDIS_PASSWORD" faz com que o Redis exija a senha.
+    # Esta senha é lida da variável REDIS_PASSWORD no arquivo .env.
+    command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
+    # Carrega as variáveis de ambiente do arquivo .env.
+    env_file: .env
+    volumes:
+      # Mapeia um volume persistente para os dados do Redis.
+      - redis_data:/data
+    ports:
+      # Mapeia a porta 6363 do container Redis para a porta 6363 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que serviços externos (ou você mesmo) acessem este Redis.
+      # No entanto, o serviço 'rails' interno usará 'redis:6379' conforme configurado no .env.
+      - '192.168.5.40:6379:6379'
+
+# Definição dos volumes persistentes para garantir que os dados não sejam perdidos ao recriar os containers.
+volumes:
+  storage_data: # Volume para uploads de arquivos do Chatwoot.
+  postgres_data: # Volume para os dados do PostgreSQL.
+  redis_data: # Volume para os dados do Redisversion: '3'
+
+services:
+  # Base é um template para os serviços que usam a mesma imagem e volumes.
+  base: &base
+    image: chatwoot/chatwoot:v4.3.0-ce
+    # O arquivo .env é usado para carregar variáveis de ambiente para os serviços.
+    env_file: .env
+    volumes:
+      # Mapeia um volume persistente para o armazenamento de dados da aplicação.
+      - storage_data:/app/storage
+
+  # Serviço principal do Chatwoot (servidor Rails).
+  rails:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Define as dependências. Este serviço só iniciará após o postgres e o redis estarem prontos.
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      # Mapeia a porta 3000 do container para a porta 3000 no IP 192.168.2.37 da sua máquina host.
+      # Isso significa que o Chatwoot será acessível via http://host.novochat.internal:3000.
+      - '192.168.5.40:3000:3000'
+    environment:
+      # Define variáveis de ambiente específicas para o container Rails.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Define o script de entrada para o container.
+    entrypoint: docker/entrypoints/rails.sh
+    # Define o comando a ser executado dentro do container.
+    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    # Garante que o serviço será reiniciado automaticamente em caso de falha.
+    restart: always
+
+  # Serviço Sidekiq para processamento de jobs em segundo plano.
+  sidekiq:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Depende do postgres e do redis para funcionar.
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      # Define variáveis de ambiente para o Sidekiq.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Comando para iniciar o Sidekiq.
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+
+  # Serviço de banco de dados PostgreSQL.
+  postgres:
+    # Imagem Docker do PostgreSQL com suporte a pgvector.
+    image: pgvector/pgvector:pg16
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    ports:
+      # Mapeia a porta 5454 do container Postgres para a porta 5454 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que você acesse o banco de dados diretamente de fora do Docker (opcional).
+      - '192.168.5.40:5432:5432'
+    volumes:
+      # Mapeia um volume persistente para os dados do PostgreSQL.
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      # Define variáveis de ambiente para a configuração do PostgreSQL.
+      # Estas variáveis são usadas se DATABASE_URL não estiver definida no .env
+      - POSTGRES_DB=chatwoot
+      - POSTGRES_USER=postgres
+      # IMPORTANTE: A senha aqui DEVE corresponder à senha definida em POSTGRES_PASSWORD no seu arquivo .env.
+      - POSTGRES_PASSWORD=BQef4IaVnba1M0IPWqja
+
+  # Serviço de cache e fila de mensagens Redis.
+  redis:
+    # Imagem Docker leve do Redis.
+    image: redis:alpine
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    # Comando para iniciar o Redis. O --requirepass "$REDIS_PASSWORD" faz com que o Redis exija a senha.
+    # Esta senha é lida da variável REDIS_PASSWORD no arquivo .env.
+    command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
+    # Carrega as variáveis de ambiente do arquivo .env.
+    env_file: .env
+    volumes:
+      # Mapeia um volume persistente para os dados do Redis.
+      - redis_data:/data
+    ports:
+      # Mapeia a porta 6363 do container Redis para a porta 6363 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que serviços externos (ou você mesmo) acessem este Redis.
+      # No entanto, o serviço 'rails' interno usará 'redis:6379' conforme configurado no .env.
+      - '192.168.5.40:6379:6379'
+
+# Definição dos volumes persistentes para garantir que os dados não sejam perdidos ao recriar os containers.
+volumes:
+  storage_data: # Volume para uploads de arquivos do Chatwoot.
+  postgres_data: # Volume para os dados do PostgreSQL.
+  redis_data: # Volume para os dados do Redisversion: '3'
+
+services:
+  # Base é um template para os serviços que usam a mesma imagem e volumes.
+  base: &base
+    image: chatwoot/chatwoot:v4.3.0-ce
+    # O arquivo .env é usado para carregar variáveis de ambiente para os serviços.
+    env_file: .env
+    volumes:
+      # Mapeia um volume persistente para o armazenamento de dados da aplicação.
+      - storage_data:/app/storage
+
+  # Serviço principal do Chatwoot (servidor Rails).
+  rails:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Define as dependências. Este serviço só iniciará após o postgres e o redis estarem prontos.
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      # Mapeia a porta 3000 do container para a porta 3000 no IP 192.168.2.37 da sua máquina host.
+      # Isso significa que o Chatwoot será acessível via http://host.novochat.internal:3000.
+      - '192.168.5.40:3000:3000'
+    environment:
+      # Define variáveis de ambiente específicas para o container Rails.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Define o script de entrada para o container.
+    entrypoint: docker/entrypoints/rails.sh
+    # Define o comando a ser executado dentro do container.
+    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    # Garante que o serviço será reiniciado automaticamente em caso de falha.
+    restart: always
+
+  # Serviço Sidekiq para processamento de jobs em segundo plano.
+  sidekiq:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Depende do postgres e do redis para funcionar.
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      # Define variáveis de ambiente para o Sidekiq.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Comando para iniciar o Sidekiq.
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+
+  # Serviço de banco de dados PostgreSQL.
+  postgres:
+    # Imagem Docker do PostgreSQL com suporte a pgvector.
+    image: pgvector/pgvector:pg16
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    ports:
+      # Mapeia a porta 5454 do container Postgres para a porta 5454 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que você acesse o banco de dados diretamente de fora do Docker (opcional).
+      - '192.168.5.40:5432:5432'
+    volumes:
+      # Mapeia um volume persistente para os dados do PostgreSQL.
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      # Define variáveis de ambiente para a configuração do PostgreSQL.
+      # Estas variáveis são usadas se DATABASE_URL não estiver definida no .env
+      - POSTGRES_DB=chatwoot
+      - POSTGRES_USER=postgres
+      # IMPORTANTE: A senha aqui DEVE corresponder à senha definida em POSTGRES_PASSWORD no seu arquivo .env.
+      - POSTGRES_PASSWORD=BQef4IaVnba1M0IPWqja
+
+  # Serviço de cache e fila de mensagens Redis.
+  redis:
+    # Imagem Docker leve do Redis.
+    image: redis:alpine
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    # Comando para iniciar o Redis. O --requirepass "$REDIS_PASSWORD" faz com que o Redis exija a senha.
+    # Esta senha é lida da variável REDIS_PASSWORD no arquivo .env.
+    command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
+    # Carrega as variáveis de ambiente do arquivo .env.
+    env_file: .env
+    volumes:
+      # Mapeia um volume persistente para os dados do Redis.
+      - redis_data:/data
+    ports:
+      # Mapeia a porta 6363 do container Redis para a porta 6363 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que serviços externos (ou você mesmo) acessem este Redis.
+      # No entanto, o serviço 'rails' interno usará 'redis:6379' conforme configurado no .env.
+      - '192.168.5.40:6379:6379'
+
+# Definição dos volumes persistentes para garantir que os dados não sejam perdidos ao recriar os containers.
+volumes:
+  storage_data: # Volume para uploads de arquivos do Chatwoot.
+  postgres_data: # Volume para os dados do PostgreSQL.
+  redis_data: # Volume para os dados do Redisversion: '3'
+
+services:
+  # Base é um template para os serviços que usam a mesma imagem e volumes.
+  base: &base
+    image: chatwoot/chatwoot:v4.3.0-ce
+    # O arquivo .env é usado para carregar variáveis de ambiente para os serviços.
+    env_file: .env
+    volumes:
+      # Mapeia um volume persistente para o armazenamento de dados da aplicação.
+      - storage_data:/app/storage
+
+  # Serviço principal do Chatwoot (servidor Rails).
+  rails:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Define as dependências. Este serviço só iniciará após o postgres e o redis estarem prontos.
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      # Mapeia a porta 3000 do container para a porta 3000 no IP 192.168.2.37 da sua máquina host.
+      # Isso significa que o Chatwoot será acessível via http://host.novochat.internal:3000.
+      - '192.168.5.40:3000:3000'
+    environment:
+      # Define variáveis de ambiente específicas para o container Rails.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Define o script de entrada para o container.
+    entrypoint: docker/entrypoints/rails.sh
+    # Define o comando a ser executado dentro do container.
+    command: ['bundle', 'exec', 'rails', 's', '-p', '3000', '-b', '0.0.0.0']
+    # Garante que o serviço será reiniciado automaticamente em caso de falha.
+    restart: always
+
+  # Serviço Sidekiq para processamento de jobs em segundo plano.
+  sidekiq:
+    # Herda as configurações do template 'base'.
+    <<: *base
+    # Depende do postgres e do redis para funcionar.
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      # Define variáveis de ambiente para o Sidekiq.
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+    # Comando para iniciar o Sidekiq.
+    command: ['bundle', 'exec', 'sidekiq', '-C', 'config/sidekiq.yml']
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+
+  # Serviço de banco de dados PostgreSQL.
+  postgres:
+    # Imagem Docker do PostgreSQL com suporte a pgvector.
+    image: pgvector/pgvector:pg16
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    ports:
+      # Mapeia a porta 5454 do container Postgres para a porta 5454 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que você acesse o banco de dados diretamente de fora do Docker (opcional).
+      - '192.168.5.40:5432:5432'
+    volumes:
+      # Mapeia um volume persistente para os dados do PostgreSQL.
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      # Define variáveis de ambiente para a configuração do PostgreSQL.
+      # Estas variáveis são usadas se DATABASE_URL não estiver definida no .env
+      - POSTGRES_DB=chatwoot
+      - POSTGRES_USER=postgres
+      # IMPORTANTE: A senha aqui DEVE corresponder à senha definida em POSTGRES_PASSWORD no seu arquivo .env.
+      - POSTGRES_PASSWORD=BQef4IaVnba1M0IPWqja
+
+  # Serviço de cache e fila de mensagens Redis.
+  redis:
+    # Imagem Docker leve do Redis.
+    image: redis:alpine
+    # Garante que o serviço será reiniciado automaticamente.
+    restart: always
+    # Comando para iniciar o Redis. O --requirepass "$REDIS_PASSWORD" faz com que o Redis exija a senha.
+    # Esta senha é lida da variável REDIS_PASSWORD no arquivo .env.
+    command: ["sh", "-c", "redis-server --requirepass \"$REDIS_PASSWORD\""]
+    # Carrega as variáveis de ambiente do arquivo .env.
+    env_file: .env
+    volumes:
+      # Mapeia um volume persistente para os dados do Redis.
+      - redis_data:/data
+    ports:
+      # Mapeia a porta 6363 do container Redis para a porta 6363 no IP 192.168.2.37 da sua máquina host.
+      # Isso permite que serviços externos (ou você mesmo) acessem este Redis.
+      # No entanto, o serviço 'rails' interno usará 'redis:6379' conforme configurado no .env.
+      - '192.168.5.40:6379:6379'
+
+# Definição dos volumes persistentes para garantir que os dados não sejam perdidos ao recriar os containers.
+volumes:
+  storage_data: # Volume para uploads de arquivos do Chatwoot.
+  postgres_data: # Volume para os dados do PostgreSQL.
+  redis_data: # Volume para os dados do Redis
